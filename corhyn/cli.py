@@ -12,7 +12,7 @@ from .pomodoro import PomodoroTimer
 import csv
 
 app = typer.Typer(help="Corhyn - Your Personal Task Management CLI")
-console = Console()
+console = Console(force_terminal=True, color_system="auto")
 
 # Database setup
 DB_PATH = Path.home() / ".corhyn" / "tasks.db"
@@ -205,8 +205,8 @@ def list(
         created_at = datetime.fromisoformat(task[6])
         created_text = created_at.strftime("%Y-%m-%d %H:%M")
 
-        # Format tags
-        tag_names = task[8] or ""
+        # Safely access tag_names
+        tag_names = task[8] if len(task) > 8 and task[8] else ""
         tag_text = ", ".join(f"[blue]{tag}[/blue]" for tag in tag_names.split(',') if tag)
 
         table.add_row(
