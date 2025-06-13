@@ -975,3 +975,63 @@ def time(
         console.print(daily_table)
 
     conn.close()
+
+@app.command()
+#find task by keyword
+def search():
+    """Search for a task by entering the keyword"""
+
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    keyword = input('Keyword of the task:- ').strip()
+    query = "select * from tasks where title like '%s'"%('%'+keyword.lower()+'%')
+    c.execute(query)
+
+    data = c.fetchall()
+    if not data:
+        console.print(f"[yellow]No task found with keyword:- {keyword}[/yellow]")
+        return 
+    
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("ID", style="dim")
+    table.add_column("Title")
+    table.add_column("Priority", justify="center")
+    table.add_column("Deadline", justify="center")
+    table.add_column("Status", justify="center")
+    table.add_column("Tags")
+    table.add_column("Created", justify="center")
+
+    for task in data:
+        # Format the status with color
+        status_style = "green" if task[5] == "completed" else "yellow"
+        status_text = f"[{status_style}]{task[5]}[/{status_style}]"
+
+        # Format the priority with color
+        priority_style = {
+            "high": "red",
+            "medium": "yellow",
+            "low": "green"
+        }.get(task[3], "dim")
+        priority_text = f"[{priority_style}]{task[3] or 'N/A'}[/{priority_style}]"
+
+        # Format the creation date
+        created_at = datetime.fromisoformat(task[6])
+        created_text = created_at.strftime("%Y-%m-%d %H:%M")
+
+        # Safely access tag_names
+        tag_names = task[8] if len(task) > 8 and task[8] else ""
+        tag_text = ", ".join(f"[blue]{tag}[/blue]" for tag in tag_names.split(',') if tag)
+
+        table.add_row(
+            str(task[0]),
+            task[1],
+            priority_text,
+            task[4] or "N/A",
+            status_text,
+            tag_text,
+            created_text
+        )
+
+    console.print(table)
+    conn.close()
