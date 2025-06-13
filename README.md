@@ -1,13 +1,13 @@
 # Corhyn CLI
 
-A powerful command-line tool for task management, time tracking, and productivity metrics.
+A command-line tool for task management, time tracking, and productivity metrics.
 
 ## Features
 
 - Task management with priorities and deadlines
 - Time tracking for tasks
 - Productivity metrics and analytics
-- Beautiful terminal UI with rich formatting
+- Terminal UI with rich formatting
 - Data persistence using SQLite
 - Tag-based organization
 - Pomodoro timer integration
@@ -17,37 +17,82 @@ A powerful command-line tool for task management, time tracking, and productivit
 ### Prerequisites
 
 - Python 3.8 or higher
-- `python3-full` package (for virtual environment support)
+
+#### Ubuntu/Debian
+
+```bash
+sudo apt update
+sudo apt install python3-full
+```
+
+#### Fedora
+
+```bash
+sudo dnf install python3 python3-pip python3-venv
+```
+
+#### Arch Linux
+
+```bash
+sudo pacman -S python python-pip python-venv
+```
+
+#### macOS
+
+```bash
+brew install python
+```
+
+#### Windows
+
+- Download and install Python from [python.org](https://www.python.org/downloads/)
+- Ensure "Add Python to PATH" is checked during installation
 
 ### Setup
 
 1. Clone the repository:
 
-```bash
-git clone https://github.com/</yourusername>/corhyn.git
-cd corhyn
-```
+   ```bash
+   git clone https://github.com/yourusername/corhyn.git
+   cd corhyn
+   ```
 
 2. Create and activate a virtual environment:
 
-```bash
-# Create virtual environment
-python3 -m venv venv
-
-# Activate virtual environment
-# On Linux/macOS:
-source venv/bin/activate
-# On Windows:
-.\venv\Scripts\activate
-```
+   - **Linux/macOS:**
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
+   - **Windows:**
+     ```bash
+     python -m venv venv
+     .\venv\Scripts\activate
+     ```
 
 3. Install the package in development mode:
-
-```bash
-pip install -e .
-```
+   ```bash
+   pip install -e .
+   ```
 
 Note: Always activate the virtual environment before working on the project. You'll know you're in the virtual environment when you see `(venv)` at the beginning of your command prompt.
+
+### Alternative Installation Using `install.sh`
+
+For convenience, a shell script (`install.sh`) is provided in the root of the project. This script automates the setup process for Unix-like systems (Linux, macOS) by:
+
+1. Creating a virtual environment
+2. Activating the virtual environment
+3. Installing the package in development mode
+
+To use the script, run:
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+**Note:** This script is intended for Unix-like systems. Windows users should follow the manual installation instructions above.
 
 ## Usage
 
@@ -223,3 +268,33 @@ This project uses modern Python tooling:
 ## License
 
 MIT License
+
+## FAQ & Troubleshooting
+
+### Where is my data stored?
+
+All your tasks, tags, and time entries are stored in a local SQLite database at `~/.corhyn/tasks.db`.
+
+### I updated the app and now I get a database error (e.g., missing column)
+
+If you see errors about missing columns or tables after an update, your database schema may be out of date. You can reset the database by deleting the file at `~/.corhyn/tasks.db`. **Warning:** This will delete all your data.
+
+### How do I reset all my data?
+
+Delete the file at `~/.corhyn/tasks.db` and restart the CLI. A new, empty database will be created.
+
+### I get an error about a missing command or option
+
+Make sure you have the latest version of the code and have reinstalled the package with `pip install -e .` inside your virtual environment.
+
+### How do I see all available commands?
+
+Run `corhyn --help` to see all commands and options. You can also run `corhyn <command> --help` for details on a specific command.
+
+### Can I use Corhyn on multiple devices?
+
+Currently, Corhyn stores data locally and does not sync between devices. You can manually copy the `~/.corhyn/tasks.db` file if needed.
+
+### How do I export my data?
+
+Use `corhyn time --export <filename.csv>` to export your time tracking data. For tasks and tags, export is not yet implemented.
