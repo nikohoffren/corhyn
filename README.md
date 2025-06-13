@@ -65,39 +65,34 @@ corhyn --install-completion
 
 ```bash
 # Add a new task
-corhyn add "Task title" [OPTIONS]
-Options:
-  -d, --description TEXT    Task description
-  -p, --priority TEXT      Task priority (low/medium/high)
-  -dl, --deadline TEXT     Task deadline
-  -t, --tags TEXT         Task tags
+corhyn add "Task title" --description "Task description" --priority high --deadline "2024-03-20" --tags "work,urgent"
 
 # List all tasks
-corhyn list [OPTIONS]
-Options:
-  -s, --status TEXT       Filter by status (pending/completed)
-  -p, --priority TEXT     Filter by priority (low/medium/high)
-  --show-completed        Show completed tasks (default: false)
+corhyn list
+
+# List all tasks including completed ones
+corhyn list --show-completed
+
+# Filter tasks by status
+corhyn list --status completed
+
+# Filter tasks by priority
+corhyn list --priority high
+
+# Filter tasks by tags
+corhyn list --tags "work,urgent"
 
 # Complete a task
-corhyn complete TASK_ID
+corhyn complete <task_id>
 
 # Update task status
 corhyn status TASK_ID STATUS
 
 # Edit a task
-corhyn edit TASK_ID [OPTIONS]
-Options:
-  -t, --title TEXT        New task title
-  -d, --description TEXT  New task description
-  -p, --priority TEXT     New task priority (low/medium/high)
-  -dl, --deadline TEXT    New task deadline
-  -tg, --tags TEXT       New task tags
+corhyn edit <task_id> --title "New title" --description "New description" --priority medium --deadline "2024-03-21" --tags "work,important"
 
 # Delete a task
-corhyn delete TASK_ID [OPTIONS]
-Options:
-  -f, --force            Force delete without confirmation
+corhyn delete <task_id>
 ```
 
 ### Time Tracking
@@ -120,6 +115,28 @@ corhyn stats
 corhyn pomodoro [OPTIONS]
 Options:
   -m, --minutes INTEGER   Duration of the pomodoro session (default: 25)
+```
+
+### Tag Management
+
+```bash
+# List all tags
+corhyn tags --list
+
+# Create a new tag
+corhyn tags --create "work"
+
+# Rename a tag
+corhyn tags --rename-id 1 --rename-name "new-tag-name"
+
+# Set tag color
+corhyn tags --color-id 1 --color-name "blue"
+
+# Delete a tag
+corhyn tags --delete 1
+
+# View tag statistics
+corhyn tags --stats
 ```
 
 ### Examples
