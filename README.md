@@ -138,6 +138,9 @@ corhyn edit <task_id> --title "New title" --description "New description" --prio
 
 # Delete a task
 corhyn delete <task_id>
+
+# Search for tasks by keyword
+corhyn search
 ```
 
 ### Time Tracking
