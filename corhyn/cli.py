@@ -8,6 +8,7 @@ import sqlite3
 import json
 from pathlib import Path
 import os
+from .pomodoro import PomodoroTimer
 
 app = typer.Typer(help="Corhyn - Your Personal Task Management CLI")
 console = Console()
@@ -219,6 +220,13 @@ def pomodoro(
     minutes: int = typer.Option(25, "--minutes", "-m", help="Duration of the pomodoro session")
 ):
     """Start a pomodoro timer session."""
-    console.print(f"[yellow]Starting a {minutes}-minute pomodoro session...[/yellow]")
-    # TODO: Implement actual timer functionality
-    console.print("[green]Pomodoro session completed![/green]")
+    try:
+        timer = PomodoroTimer()
+        console.print(f"[yellow]Starting a {minutes}-minute pomodoro session...[/yellow]")
+        console.print("[dim]Press Ctrl+C to stop the timer[/dim]")
+        timer.start_session(minutes)
+    except KeyboardInterrupt:
+        timer.stop()
+        console.print("\n[red]Pomodoro session stopped by user[/red]")
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")

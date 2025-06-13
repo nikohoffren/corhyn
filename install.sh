@@ -7,6 +7,6 @@ source venv/bin/activate
 # Install the package in development mode
 pip install -e .
 
-echo "TaskMaster has been installed successfully!"
-echo "You can now use it by running 'taskmaster' in your terminal."
-echo "Try 'taskmaster --help' to see available commands."
+echo "Corhyn CLI has been installed successfully!"
+echo "You can now use it by running 'corhyn' in your terminal."
+echo "Try 'corhyn --help' to see available commands."
