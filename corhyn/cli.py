@@ -279,32 +279,157 @@ def stop():
     console.print(f"[green]Stopped time tracking. Duration: {duration} seconds[/green]")
 
 @app.command()
-def stats():
-    """Show productivity statistics."""
+def stats(
+    period: str = typer.Option("week", "--period", "-p", help="Time period for stats (day/week/month/year)"),
+    detailed: bool = typer.Option(False, "--detailed", "-d", help="Show detailed statistics")
+):
+    """View productivity statistics and analytics."""
     conn = sqlite3.connect(str(DB_PATH))
     c = conn.cursor()
 
-    # Get total tasks
-    c.execute("SELECT COUNT(*) FROM tasks")
-    total_tasks = c.fetchone()[0]
+    # Calculate time period
+    now = datetime.now()
+    if period == "day":
+        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start_date = now - timedelta(days=now.weekday())
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "month":
+        start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif period == "year":
+        start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        console.print("[red]Invalid period. Use: day, week, month, or year[/red]")
+        return
 
-    # Get completed tasks
-    c.execute("SELECT COUNT(*) FROM tasks WHERE status = 'completed'")
-    completed_tasks = c.fetchone()[0]
+    # Basic statistics
+    c.execute('''
+        SELECT
+            COUNT(*) as total_tasks,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+            AVG(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) * 100 as completion_rate
+        FROM tasks
+        WHERE created_at >= ?
+    ''', (start_date.isoformat(),))
+    basic_stats = c.fetchone()
 
-    # Get total time tracked
-    c.execute("SELECT SUM(duration) FROM time_entries")
-    total_time = c.fetchone()[0] or 0
+    # Time tracking statistics
+    c.execute('''
+        SELECT
+            COUNT(DISTINCT task_id) as tracked_tasks,
+            SUM(duration) as total_time,
+            AVG(duration) as avg_time
+        FROM time_entries
+        WHERE start_time >= ?
+    ''', (start_date.isoformat(),))
+    time_stats = c.fetchone()
 
-    # Create statistics panel
-    stats_text = f"""
-    Total Tasks: {total_tasks}
-    Completed Tasks: {completed_tasks}
-    Completion Rate: {(completed_tasks/total_tasks*100 if total_tasks > 0 else 0):.1f}%
-    Total Time Tracked: {timedelta(seconds=total_time)}
-    """
+    # Priority-based statistics
+    c.execute('''
+        SELECT
+            priority,
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) * 100 as completion_rate
+        FROM tasks
+        WHERE created_at >= ?
+        GROUP BY priority
+    ''', (start_date.isoformat(),))
+    priority_stats = c.fetchall()
 
-    console.print(Panel(stats_text, title="Productivity Statistics", border_style="blue"))
+    # Most productive hours
+    c.execute('''
+        SELECT
+            strftime('%H', start_time) as hour,
+            COUNT(*) as sessions,
+            SUM(duration) as total_time
+        FROM time_entries
+        WHERE start_time >= ?
+        GROUP BY hour
+        ORDER BY total_time DESC
+        LIMIT 5
+    ''', (start_date.isoformat(),))
+    productive_hours = c.fetchall()
+
+    # Task completion trends
+    c.execute('''
+        SELECT
+            date(created_at) as date,
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+        FROM tasks
+        WHERE created_at >= ?
+        GROUP BY date
+        ORDER BY date
+    ''', (start_date.isoformat(),))
+    trends = c.fetchall()
+
+    # Display basic statistics
+    console.print(Panel.fit(
+        f"[bold]Productivity Statistics for {period.capitalize()}[/bold]\n"
+        f"Total Tasks: {basic_stats[0]}\n"
+        f"Completed Tasks: {basic_stats[1]}\n"
+        f"Completion Rate: {basic_stats[2]:.1f}%\n"
+        f"Tracked Tasks: {time_stats[0]}\n"
+        f"Total Time Spent: {timedelta(seconds=time_stats[1] or 0)}\n"
+        f"Average Time per Task: {timedelta(seconds=time_stats[2] or 0)}",
+        title="Overview"
+    ))
+
+    if detailed:
+        # Priority-based statistics
+        priority_table = Table(show_header=True, header_style="bold magenta")
+        priority_table.add_column("Priority")
+        priority_table.add_column("Total Tasks", justify="right")
+        priority_table.add_column("Completed", justify="right")
+        priority_table.add_column("Completion Rate", justify="right")
+
+        for stat in priority_stats:
+            priority_table.add_row(
+                stat[0] or "N/A",
+                str(stat[1]),
+                str(stat[2]),
+                f"{stat[3]:.1f}%"
+            )
+
+        console.print("\n[bold]Priority-based Statistics[/bold]")
+        console.print(priority_table)
+
+        # Most productive hours
+        hours_table = Table(show_header=True, header_style="bold magenta")
+        hours_table.add_column("Hour")
+        hours_table.add_column("Sessions", justify="right")
+        hours_table.add_column("Total Time", justify="right")
+
+        for hour in productive_hours:
+            hours_table.add_row(
+                f"{hour[0]}:00",
+                str(hour[1]),
+                str(timedelta(seconds=hour[2]))
+            )
+
+        console.print("\n[bold]Most Productive Hours[/bold]")
+        console.print(hours_table)
+
+        # Task completion trends
+        trends_table = Table(show_header=True, header_style="bold magenta")
+        trends_table.add_column("Date")
+        trends_table.add_column("Total Tasks", justify="right")
+        trends_table.add_column("Completed", justify="right")
+        trends_table.add_column("Completion Rate", justify="right")
+
+        for trend in trends:
+            completion_rate = (trend[2] / trend[1] * 100) if trend[1] > 0 else 0
+            trends_table.add_row(
+                trend[0],
+                str(trend[1]),
+                str(trend[2]),
+                f"{completion_rate:.1f}%"
+            )
+
+        console.print("\n[bold]Task Completion Trends[/bold]")
+        console.print(trends_table)
+
     conn.close()
 
 @app.command()

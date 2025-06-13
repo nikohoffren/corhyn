@@ -109,13 +109,24 @@ corhyn stop
 
 ```bash
 # View productivity statistics
-corhyn stats
+corhyn stats [OPTIONS]
+Options:
+  -p, --period TEXT    Time period for stats (day/week/month/year) [default: week]
+  -d, --detailed      Show detailed statistics
 
 # Start a pomodoro timer session
 corhyn pomodoro [OPTIONS]
 Options:
   -m, --minutes INTEGER   Duration of the pomodoro session (default: 25)
 ```
+
+The productivity statistics include:
+
+- Overview of task completion and time tracking
+- Priority-based task completion rates
+- Most productive hours of the day
+- Task completion trends over time
+- Detailed analytics with the --detailed flag
 
 ### Tag Management
 
