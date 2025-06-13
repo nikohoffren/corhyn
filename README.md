@@ -77,6 +77,27 @@ corhyn list [OPTIONS]
 Options:
   -s, --status TEXT       Filter by status (pending/completed)
   -p, --priority TEXT     Filter by priority (low/medium/high)
+  --show-completed        Show completed tasks (default: false)
+
+# Complete a task
+corhyn complete TASK_ID
+
+# Update task status
+corhyn status TASK_ID STATUS
+
+# Edit a task
+corhyn edit TASK_ID [OPTIONS]
+Options:
+  -t, --title TEXT        New task title
+  -d, --description TEXT  New task description
+  -p, --priority TEXT     New task priority (low/medium/high)
+  -dl, --deadline TEXT    New task deadline
+  -tg, --tags TEXT       New task tags
+
+# Delete a task
+corhyn delete TASK_ID [OPTIONS]
+Options:
+  -f, --force            Force delete without confirmation
 ```
 
 ### Time Tracking
@@ -113,11 +134,31 @@ corhyn add "Complete project documentation" \
 # List all high priority tasks
 corhyn list --priority high
 
-# Start time tracking for task ID 1
-corhyn start 1
+# List all completed tasks
+corhyn list --status completed
 
-# Start a 30-minute pomodoro session
-corhyn pomodoro --minutes 30
+# Show all tasks including completed ones
+corhyn list --show-completed
+
+# Complete a task
+corhyn complete 1
+
+# Mark a task as pending
+corhyn status 1 pending
+
+# Mark a task as completed
+corhyn status 1 completed
+
+# Edit a task's title and priority
+corhyn edit 1 \
+  --title "Updated task title" \
+  --priority medium
+
+# Delete a task (with confirmation)
+corhyn delete 1
+
+# Force delete a task (without confirmation)
+corhyn delete 1 --force
 ```
 
 ## Development

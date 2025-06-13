@@ -80,7 +80,8 @@ def add(
 @app.command()
 def list(
     status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status (pending/completed)"),
-    priority: Optional[str] = typer.Option(None, "--priority", "-p", help="Filter by priority (low/medium/high)")
+    priority: Optional[str] = typer.Option(None, "--priority", "-p", help="Filter by priority (low/medium/high)"),
+    show_completed: bool = typer.Option(False, "--show-completed", help="Show completed tasks")
 ):
     """List all tasks with optional filtering."""
     if status and status not in ["pending", "completed"]:
@@ -97,33 +98,60 @@ def list(
     query = "SELECT * FROM tasks"
     params = []
 
-    if status or priority:
-        conditions = []
-        if status:
-            conditions.append("status = ?")
-            params.append(status)
-        if priority:
-            conditions.append("priority = ?")
-            params.append(priority)
+    conditions = []
+    if not show_completed:
+        conditions.append("status = 'pending'")
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if priority:
+        conditions.append("priority = ?")
+        params.append(priority)
+
+    if conditions:
         query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY created_at DESC"
 
     c.execute(query, params)
     tasks = c.fetchall()
 
+    if not tasks:
+        console.print("[yellow]No tasks found matching the criteria.[/yellow]")
+        return
+
     table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("ID")
+    table.add_column("ID", style="dim")
     table.add_column("Title")
-    table.add_column("Priority")
-    table.add_column("Deadline")
-    table.add_column("Status")
+    table.add_column("Priority", justify="center")
+    table.add_column("Deadline", justify="center")
+    table.add_column("Status", justify="center")
+    table.add_column("Created", justify="center")
 
     for task in tasks:
+        # Format the status with color
+        status_style = "green" if task[5] == "completed" else "yellow"
+        status_text = f"[{status_style}]{task[5]}[/{status_style}]"
+
+        # Format the priority with color
+        priority_style = {
+            "high": "red",
+            "medium": "yellow",
+            "low": "green"
+        }.get(task[3], "dim")
+        priority_text = f"[{priority_style}]{task[3] or 'N/A'}[/{priority_style}]"
+
+        # Format the creation date
+        created_at = datetime.fromisoformat(task[6])
+        created_text = created_at.strftime("%Y-%m-%d %H:%M")
+
         table.add_row(
             str(task[0]),
             task[1],
-            task[3] or "N/A",
+            priority_text,
             task[4] or "N/A",
-            task[5]
+            status_text,
+            created_text
         )
 
     console.print(table)
@@ -230,3 +258,159 @@ def pomodoro(
         console.print("\n[red]Pomodoro session stopped by user[/red]")
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")
+
+@app.command()
+def complete(task_id: int):
+    """Mark a task as completed."""
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    # Check if task exists
+    c.execute("SELECT id, title, status FROM tasks WHERE id = ?", (task_id,))
+    task = c.fetchone()
+    if not task:
+        console.print(f"[red]Task with ID {task_id} not found![/red]")
+        return
+
+    if task[2] == 'completed':
+        console.print(f"[yellow]Task '{task[1]}' is already completed![/yellow]")
+        return
+
+    # Update task status
+    c.execute('''
+        UPDATE tasks
+        SET status = 'completed', completed_at = ?
+        WHERE id = ?
+    ''', (datetime.now().isoformat(), task_id))
+
+    conn.commit()
+    conn.close()
+
+    console.print(f"[green]Task '{task[1]}' marked as completed![/green]")
+
+@app.command()
+def status(
+    task_id: int,
+    status: str = typer.Argument(..., help="New status (pending/completed)")
+):
+    """Update task status."""
+    if status not in ["pending", "completed"]:
+        console.print("[red]Status must be one of: pending, completed[/red]")
+        return
+
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    # Check if task exists
+    c.execute("SELECT id, title FROM tasks WHERE id = ?", (task_id,))
+    task = c.fetchone()
+    if not task:
+        console.print(f"[red]Task with ID {task_id} not found![/red]")
+        return
+
+    # Update task status
+    completed_at = datetime.now().isoformat() if status == 'completed' else None
+    c.execute('''
+        UPDATE tasks
+        SET status = ?, completed_at = ?
+        WHERE id = ?
+    ''', (status, completed_at, task_id))
+
+    conn.commit()
+    conn.close()
+
+    console.print(f"[green]Task '{task[1]}' status updated to {status}![/green]")
+
+@app.command()
+def edit(
+    task_id: int,
+    title: Optional[str] = typer.Option(None, "--title", "-t", help="New task title"),
+    description: Optional[str] = typer.Option(None, "--description", "-d", help="New task description"),
+    priority: Optional[str] = typer.Option(None, "--priority", "-p", help="New task priority (low/medium/high)"),
+    deadline: Optional[str] = typer.Option(None, "--deadline", "-dl", help="New task deadline"),
+    tags: Optional[str] = typer.Option(None, "--tags", "-tg", help="New task tags")
+):
+    """Edit an existing task."""
+    if priority and priority not in ["low", "medium", "high"]:
+        console.print("[red]Priority must be one of: low, medium, high[/red]")
+        return
+
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    # Check if task exists
+    c.execute("SELECT id, title FROM tasks WHERE id = ?", (task_id,))
+    task = c.fetchone()
+    if not task:
+        console.print(f"[red]Task with ID {task_id} not found![/red]")
+        return
+
+    # Build update query dynamically based on provided fields
+    update_fields = []
+    params = []
+
+    if title is not None:
+        update_fields.append("title = ?")
+        params.append(title)
+    if description is not None:
+        update_fields.append("description = ?")
+        params.append(description)
+    if priority is not None:
+        update_fields.append("priority = ?")
+        params.append(priority)
+    if deadline is not None:
+        update_fields.append("deadline = ?")
+        params.append(deadline)
+    if tags is not None:
+        update_fields.append("tags = ?")
+        params.append(tags)
+
+    if not update_fields:
+        console.print("[yellow]No changes provided. Use --help to see available options.[/yellow]")
+        return
+
+    # Add task_id to params
+    params.append(task_id)
+
+    # Execute update
+    query = f'''
+        UPDATE tasks
+        SET {", ".join(update_fields)}
+        WHERE id = ?
+    '''
+    c.execute(query, params)
+
+    conn.commit()
+    conn.close()
+
+    console.print(f"[green]Task '{task[1]}' updated successfully![/green]")
+
+@app.command()
+def delete(
+    task_id: int,
+    force: bool = typer.Option(False, "--force", "-f", help="Force delete without confirmation")
+):
+    """Delete a task."""
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    # Check if task exists
+    c.execute("SELECT id, title FROM tasks WHERE id = ?", (task_id,))
+    task = c.fetchone()
+    if not task:
+        console.print(f"[red]Task with ID {task_id} not found![/red]")
+        return
+
+    if not force:
+        # Ask for confirmation
+        confirm = typer.confirm(f"Are you sure you want to delete task '{task[1]}'?")
+        if not confirm:
+            console.print("[yellow]Task deletion cancelled.[/yellow]")
+            return
+
+    # Delete the task
+    c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+
+    console.print(f"[green]Task '{task[1]}' deleted successfully![/green]")
