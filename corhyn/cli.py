@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import os
 from .pomodoro import PomodoroTimer
+import csv
 
 app = typer.Typer(help="Corhyn - Your Personal Task Management CLI")
 console = Console()
@@ -18,53 +19,53 @@ DB_PATH = Path.home() / ".corhyn" / "tasks.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
 def init_db():
+    """Initialize the SQLite database."""
     conn = sqlite3.connect(str(DB_PATH))
     c = conn.cursor()
 
     # Create tasks table
     c.execute('''
         CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT,
             priority TEXT,
             deadline TEXT,
             status TEXT DEFAULT 'pending',
-            created_at TEXT,
-            completed_at TEXT
+            created_at TEXT NOT NULL
+        )
+    ''')
+
+    # Create time_entries table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS time_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            start_time TEXT NOT NULL,
+            duration INTEGER,
+            notes TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks (id)
         )
     ''')
 
     # Create tags table
     c.execute('''
         CREATE TABLE IF NOT EXISTS tags (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
             color TEXT,
-            created_at TEXT
+            created_at TEXT NOT NULL
         )
     ''')
 
-    # Create task-tag relationship table
+    # Create task_tags relationship table
     c.execute('''
         CREATE TABLE IF NOT EXISTS task_tags (
-            task_id INTEGER,
-            tag_id INTEGER,
-            FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE,
-            FOREIGN KEY (tag_id) REFERENCES tags (id) ON DELETE CASCADE,
-            PRIMARY KEY (task_id, tag_id)
-        )
-    ''')
-
-    # Create time entries table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS time_entries (
-            id INTEGER PRIMARY KEY,
-            task_id INTEGER,
-            start_time TEXT,
-            end_time TEXT,
-            duration INTEGER,
-            FOREIGN KEY (task_id) REFERENCES tasks (id)
+            task_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            PRIMARY KEY (task_id, tag_id),
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (tag_id) REFERENCES tags (id)
         )
     ''')
 
@@ -769,3 +770,208 @@ def _get_or_create_tags(cursor, tag_names: str) -> list:
             tag_ids.append(cursor.lastrowid)
 
     return tag_ids
+
+@app.command()
+def time(
+    list_entries: bool = typer.Option(False, "--list", "-l", help="List time tracking entries"),
+    add_task_id: Optional[int] = typer.Option(None, help="Task ID for manual time entry"),
+    add_duration: Optional[int] = typer.Option(None, help="Duration in minutes for manual time entry"),
+    export: Optional[str] = typer.Option(None, "--export", "-e", help="Export time entries to CSV file"),
+    report: bool = typer.Option(False, "--report", "-r", help="Show time tracking report"),
+    period: str = typer.Option("week", "--period", "-p", help="Time period for report (day/week/month/year)")
+):
+    """Manage time tracking entries and reports."""
+    conn = sqlite3.connect(str(DB_PATH))
+    c = conn.cursor()
+
+    if list_entries or not any([list_entries, add_task_id, export, report]):
+        # List time entries
+        c.execute('''
+            SELECT
+                te.id,
+                t.title,
+                te.start_time,
+                te.duration,
+                te.notes
+            FROM time_entries te
+            JOIN tasks t ON te.task_id = t.id
+            ORDER BY te.start_time DESC
+        ''')
+        entries = c.fetchall()
+
+        if not entries:
+            console.print("[yellow]No time entries found.[/yellow]")
+            return
+
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("ID", style="dim")
+        table.add_column("Task")
+        table.add_column("Start Time")
+        table.add_column("Duration")
+        table.add_column("Notes")
+
+        for entry in entries:
+            start_time = datetime.fromisoformat(entry[2])
+            duration = timedelta(seconds=entry[3]) if entry[3] else "In Progress"
+            table.add_row(
+                str(entry[0]),
+                entry[1],
+                start_time.strftime("%Y-%m-%d %H:%M"),
+                str(duration),
+                entry[4] or ""
+            )
+
+        console.print(table)
+
+    elif add_task_id is not None and add_duration is not None:
+        # Add manual time entry
+        duration_seconds = add_duration * 60
+
+        # Verify task exists
+        c.execute("SELECT title FROM tasks WHERE id = ?", (add_task_id,))
+        task = c.fetchone()
+        if not task:
+            console.print(f"[red]Task with ID {add_task_id} not found![/red]")
+            return
+
+        # Add time entry
+        c.execute('''
+            INSERT INTO time_entries (task_id, start_time, duration, notes)
+            VALUES (?, ?, ?, ?)
+        ''', (add_task_id, datetime.now().isoformat(), duration_seconds, "Manual entry"))
+        conn.commit()
+
+        console.print(f"[green]Added {add_duration} minutes to task '{task[0]}'[/green]")
+
+    elif export:
+        # Export time entries to CSV
+        c.execute('''
+            SELECT
+                t.title,
+                te.start_time,
+                te.duration,
+                te.notes
+            FROM time_entries te
+            JOIN tasks t ON te.task_id = t.id
+            ORDER BY te.start_time
+        ''')
+        entries = c.fetchall()
+
+        if not entries:
+            console.print("[yellow]No time entries to export.[/yellow]")
+            return
+
+        try:
+            with open(export, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Task', 'Start Time', 'Duration (minutes)', 'Notes'])
+                for entry in entries:
+                    duration_minutes = entry[2] / 60 if entry[2] else 0
+                    writer.writerow([
+                        entry[0],
+                        entry[1],
+                        f"{duration_minutes:.1f}",
+                        entry[3] or ""
+                    ])
+            console.print(f"[green]Time entries exported to {export}[/green]")
+        except Exception as e:
+            console.print(f"[red]Error exporting time entries: {str(e)}[/red]")
+
+    elif report:
+        # Calculate time period
+        now = datetime.now()
+        if period == "day":
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "week":
+            start_date = now - timedelta(days=now.weekday())
+            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "month":
+            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        elif period == "year":
+            start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            console.print("[red]Invalid period. Use: day, week, month, or year[/red]")
+            return
+
+        # Get time tracking statistics
+        c.execute('''
+            SELECT
+                COUNT(DISTINCT task_id) as tracked_tasks,
+                SUM(duration) as total_time,
+                AVG(duration) as avg_time,
+                COUNT(*) as total_sessions
+            FROM time_entries
+            WHERE start_time >= ?
+        ''', (start_date.isoformat(),))
+        stats = c.fetchone()
+
+        # Get time by task
+        c.execute('''
+            SELECT
+                t.title,
+                COUNT(*) as sessions,
+                SUM(te.duration) as total_time
+            FROM time_entries te
+            JOIN tasks t ON te.task_id = t.id
+            WHERE te.start_time >= ?
+            GROUP BY t.id
+            ORDER BY total_time DESC
+        ''', (start_date.isoformat(),))
+        task_stats = c.fetchall()
+
+        # Get time by day
+        c.execute('''
+            SELECT
+                date(start_time) as date,
+                COUNT(*) as sessions,
+                SUM(duration) as total_time
+            FROM time_entries
+            WHERE start_time >= ?
+            GROUP BY date
+            ORDER BY date
+        ''', (start_date.isoformat(),))
+        daily_stats = c.fetchall()
+
+        # Display report
+        console.print(Panel.fit(
+            f"[bold]Time Tracking Report for {period.capitalize()}[/bold]\n"
+            f"Tracked Tasks: {stats[0]}\n"
+            f"Total Time: {timedelta(seconds=stats[1] or 0)}\n"
+            f"Average Session: {timedelta(seconds=stats[2] or 0)}\n"
+            f"Total Sessions: {stats[3]}",
+            title="Overview"
+        ))
+
+        # Time by task
+        task_table = Table(show_header=True, header_style="bold magenta")
+        task_table.add_column("Task")
+        task_table.add_column("Sessions", justify="right")
+        task_table.add_column("Total Time", justify="right")
+
+        for stat in task_stats:
+            task_table.add_row(
+                stat[0],
+                str(stat[1]),
+                str(timedelta(seconds=stat[2]))
+            )
+
+        console.print("\n[bold]Time by Task[/bold]")
+        console.print(task_table)
+
+        # Time by day
+        daily_table = Table(show_header=True, header_style="bold magenta")
+        daily_table.add_column("Date")
+        daily_table.add_column("Sessions", justify="right")
+        daily_table.add_column("Total Time", justify="right")
+
+        for stat in daily_stats:
+            daily_table.add_row(
+                stat[0],
+                str(stat[1]),
+                str(timedelta(seconds=stat[2]))
+            )
+
+        console.print("\n[bold]Time by Day[/bold]")
+        console.print(daily_table)
+
+    conn.close()

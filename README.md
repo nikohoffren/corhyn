@@ -103,7 +103,28 @@ corhyn start TASK_ID
 
 # Stop time tracking
 corhyn stop
+
+# List time tracking entries
+corhyn time --list
+
+# Add manual time entry
+corhyn time --add-task-id TASK_ID --add-duration MINUTES
+
+# Export time entries to CSV
+corhyn time --export "time_entries.csv"
+
+# Show time tracking report
+corhyn time --report [OPTIONS]
+Options:
+  -p, --period TEXT    Time period for report (day/week/month/year) [default: week]
 ```
+
+The time tracking report includes:
+
+- Overview of tracked time and sessions
+- Time spent per task
+- Daily time tracking breakdown
+- Export functionality for data analysis
 
 ### Productivity
 
